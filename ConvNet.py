@@ -59,9 +59,15 @@ hidden_layer_3 = ConvRectifiedLinear(layer_name='h_3',
                                      pool_stride=[2, 2],
                                      max_kernel_norm=1.9365)
 
-hidden_layer_4 = RectifiedLinear()
-hidden_layer_5 = RectifiedLinear()
-hidden_layer_6 = RectifiedLinear()
+hidden_layer_4 = RectifiedLinear(layer_name='h_4',
+                                 irange=.05,
+                                 dim=64)
+hidden_layer_5 = RectifiedLinear(layer_name='h_5',
+                                 irange=.05,
+                                 dim=64)
+hidden_layer_6 = RectifiedLinear(layer_name='h_6',
+                                 irange=.05,
+                                 dim=64)
 
 output_layer = Softmax(max_col_norm=1.9365,
                        layer_name='output',
@@ -71,18 +77,21 @@ output_layer = Softmax(max_col_norm=1.9365,
 model = MLP(batch_size=batch_size,
             input_space=Conv2DSpace(shape=[crop_size,crop_size], num_channels=3),
             layers=[hidden_layer_1, hidden_layer_2, hidden_layer_3,
-                    hidden_layer_4, hidden_layer_5, hidden_layer_6, output_layer])
+                    hidden_layer_4, hidden_layer_5, hidden_layer_6,
+                    output_layer])
 
 # Construct training (or optimization?) algorithm object
 cost_method_1 = MethodCost(method='cost_from_X')
-cost_method_2 = WeightDecay(coeffs=[.00005, .00005, .00005])
+cost_method_2 = WeightDecay(coeffs={'h_1':.00005, 'h_2':.00005, 'h_3':.00005,
+                                    'h_4':.00005, 'h_5':.00005, 'h_6':.00005,
+                                    'output':.00005})
 
 cost_methods = SumOfCosts(costs=[cost_method_1, cost_method_2])
 
 termination_criteria = And([MonitorBased(channel_name='valid_output_misclass',
                                          prop_decrease=0.50,
                                          N=10),
-                            EpochCounter(max_epochs=10)])
+                            EpochCounter(max_epochs=1)])
 
 algorithm = SGD(batch_size=batch_size,
                 train_iteration_mode='batchwise_shuffled_sequential',
