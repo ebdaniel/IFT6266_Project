@@ -9,6 +9,7 @@ from pylearn2.training_algorithms.learning_rule import MomentumAdjustor
 from pylearn2.costs.cost import MethodCost
 from pylearn2.costs.cost import SumOfCosts
 from pylearn2.costs.mlp import WeightDecay
+from pylearn2.costs.mlp.dropout import Dropout
 from pylearn2.termination_criteria import EpochCounter
 from pylearn2.termination_criteria import MonitorBased
 from pylearn2.termination_criteria import And
@@ -20,105 +21,135 @@ from pylearn2.train_extensions.best_params import MonitorBasedSaveBest
 
 from ift6266h15.code.pylearn2.datasets.variable_image_dataset import DogsVsCats, RandomCrop
 
-# Load dataset
-crop_size = 221
-scaled_size = 256
-rand_crop = RandomCrop(scaled_size=scaled_size, crop_size=crop_size)
+def build_dogs_vs_cats_dataset(crop_size=200):
+   scaled_size = crop_size + 20
 
-train = DogsVsCats(transformer=rand_crop,
-                   start=0,
-                   stop=20000)
+   # Crop the image randomly in a [crop_size, crop_size] size
+   rand_crop = RandomCrop(scaled_size=scaled_size, crop_size=crop_size)
 
-validation = DogsVsCats(transformer=rand_crop,
-                        start=20000,
-                        stop=22500)
+   # Train set
+   train = DogsVsCats(transformer=rand_crop, start=0, stop=20000)
 
-# Construct model
-batch_size = 100
-hidden_layer_1 = ConvRectifiedLinear(layer_name='h_1',
-                                     output_channels=64,
-                                     irange=.05,
-                                     kernel_shape=[5,5],
-                                     pool_shape=[4,4],
-                                     pool_stride=[2,2],
-                                     max_kernel_norm=1.9365)
+   # Validation set
+   validation = DogsVsCats(transformer=rand_crop, start=20000, stop=22500)
 
-hidden_layer_2 = ConvRectifiedLinear(layer_name='h_2',
-                                     output_channels=64,
-                                     irange=.05,
-                                     kernel_shape=[5,5],
-                                     pool_shape=[4,4],
-                                     pool_stride=[2,2],
-                                     max_kernel_norm=1.9365)
-
-hidden_layer_3 = ConvRectifiedLinear(layer_name='h_3',
-                                     output_channels=64,
-                                     irange=.05,
-                                     kernel_shape=[5, 5],
-                                     pool_shape=[4, 4],
-                                     pool_stride=[2, 2],
-                                     max_kernel_norm=1.9365)
-
-hidden_layer_4 = RectifiedLinear(layer_name='h_4',
-                                 irange=.05,
-                                 dim=64)
-hidden_layer_5 = RectifiedLinear(layer_name='h_5',
-                                 irange=.05,
-                                 dim=64)
-hidden_layer_6 = RectifiedLinear(layer_name='h_6',
-                                 irange=.05,
-                                 dim=64)
-
-output_layer = Softmax(max_col_norm=1.9365,
-                       layer_name='output',
-                       n_classes=2,
-                       istdev=.05)
-
-model = MLP(batch_size=batch_size,
-            input_space=Conv2DSpace(shape=[crop_size,crop_size], num_channels=3),
-            layers=[hidden_layer_1, hidden_layer_2, hidden_layer_3,
-                    hidden_layer_4, hidden_layer_5, hidden_layer_6,
-                    output_layer])
-
-# Construct training (or optimization?) algorithm object
-cost_method_1 = MethodCost(method='cost_from_X')
-cost_method_2 = WeightDecay(coeffs={'h_1':.00005, 'h_2':.00005, 'h_3':.00005,
-                                    'h_4':.00005, 'h_5':.00005, 'h_6':.00005,
-                                    'output':.00005})
-
-cost_methods = SumOfCosts(costs=[cost_method_1, cost_method_2])
-
-termination_criteria = And([MonitorBased(channel_name='valid_output_misclass',
-                                         prop_decrease=0.50,
-                                         N=10),
-                            EpochCounter(max_epochs=1)])
-
-algorithm = SGD(batch_size=batch_size,
-                train_iteration_mode='batchwise_shuffled_sequential',
-                batches_per_iter=10,
-                monitoring_batch_size=batch_size,
-                monitoring_batches=10,
-                monitor_iteration_mode='batchwise_shuffled_sequential',
-                learning_rate=1e-3,
-                learning_rule=Momentum(init_momentum=0.95),
-                monitoring_dataset={'train':train,
-                                    'valid':validation},
-                cost=cost_methods,
-                termination_criterion=termination_criteria)
-
-extensions = [MonitorBasedSaveBest(channel_name='valid_output_misclass',
-                                   save_path="convnetBestResults.pkl"),
-              MomentumAdjustor(start=1,
-                               saturate=10,
-                               final_momentum=.99)]
+   return [ train, validation]
 
 
-# Run test
-train = Train(dataset=train,
-              model=model,
-              algorithm=algorithm,
-              save_path='convnetResults.pkl',
-              save_freq=1,
-              extensions=extensions)
+def build_model(train,
+                validation,
+                crop_size,
+                conv_layers,
+                fully_connected_layers,
+                use_weight_decay,
+                use_drop_out,
+                batch_size=100,
+                max_epochs=1000):
 
-train.main_loop()
+   # TODO: add some parameters validation
+
+   # Construct model
+
+   # Convolution layers
+   weight_decay_coeffs = {}
+   nb_conv_layers = conv_layers['nb_layers']
+   hidden_conv_layers = [0]*nb_conv_layers
+   for i in range(nb_conv_layers):
+      layer_name = 'h_c_{}'.format(i+1)
+      hidden_conv_layers[i] = ConvRectifiedLinear(layer_name=layer_name,
+                                                  output_channels=conv_layers['output_channels'][i],
+                                                  irange=.05,
+                                                  kernel_shape=conv_layers['kernel_shape'][i],
+                                                  pool_shape=conv_layers['pool_shape'][i],
+                                                  pool_stride=conv_layers['pool_stride'][i])
+
+      weight_decay_coeffs = {layer_name:conv_layers['weight_decay'][i]}
+
+   layers = []
+
+   layers.extend(hidden_conv_layers)
+
+
+   # Fully connected layers
+   nb_fully_connected_layers = fully_connected_layers['nb_layers']
+   hidden_full_layers = [0] * nb_fully_connected_layers
+   for i in range(nb_fully_connected_layers):
+
+      layer_name = 'h_f_{}'.format(i+1)
+      hidden_full_layers[i] = RectifiedLinear(layer_name=layer_name,
+                                              irange=.05,
+                                              dim=fully_connected_layers['dim'][i])
+
+      if (use_weight_decay):
+         weight_decay_coeffs = {layer_name: fully_connected_layers['weight_decay'][i]}
+
+
+   layers.extend(hidden_full_layers)
+
+   # Build output layer
+   output_layer = Softmax(max_col_norm=1.9365,
+                          layer_name='output',
+                          n_classes=2,
+                          istdev=.05)
+
+   layers.extend([output_layer])
+
+
+   print len(layers)
+
+   model = MLP(batch_size=batch_size,
+               input_space=Conv2DSpace(shape=[crop_size,crop_size], num_channels=3),
+               layers=layers)
+
+   # Construct training (or optimization?) algorithm object
+   cost_methods_wanted = [MethodCost(method='cost_from_X')]
+
+   if use_weight_decay:
+      # add weight decay for output layer
+      weight_decay_coeffs['output']=.00005 # TODO: this should also be a paramter
+      cost_methods_wanted.extend([WeightDecay(coeffs=weight_decay_coeffs)])
+
+   if use_drop_out:
+      cost_methods_wanted.extend([Dropout()])
+
+   print cost_methods_wanted
+
+   cost_methods = SumOfCosts(costs=cost_methods_wanted)
+
+   termination_criteria = And([MonitorBased(channel_name='valid_output_misclass',
+                                            prop_decrease=0.25,
+                                            N=10),             # number of epochs to look back
+                               EpochCounter(max_epochs=max_epochs)])
+
+   algorithm = SGD(batch_size=batch_size,
+                   train_iteration_mode='batchwise_shuffled_sequential',
+                   batches_per_iter=10,
+                   monitoring_batch_size=batch_size,
+                   monitoring_batches=10,
+                   monitor_iteration_mode='batchwise_shuffled_sequential',
+                   learning_rate=1e-3,
+                   learning_rule=Momentum(init_momentum=0.5),
+                   monitoring_dataset={'train':train,
+                                       'valid':validation},
+                   cost=cost_methods,
+                   termination_criterion=termination_criteria)
+
+   extensions = [MonitorBasedSaveBest(channel_name='valid_output_misclass',
+                                      save_path="convnetBestResults.pkl"),
+                 MomentumAdjustor(start=10,
+                                  saturate=100,
+                                  final_momentum=.99)]
+
+
+   # Run test
+   train = Train(dataset=train,
+                 model=model,
+                 algorithm=algorithm,
+                 save_path='convnetResults.pkl',
+                 save_freq=1,
+                 extensions=extensions)
+
+   return train
+
+def run(model):
+   model.main_loop()
