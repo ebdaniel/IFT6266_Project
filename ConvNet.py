@@ -22,7 +22,7 @@ from pylearn2.train_extensions.best_params import MonitorBasedSaveBest
 from ift6266h15.code.pylearn2.datasets.variable_image_dataset import DogsVsCats, RandomCrop
 
 def build_dogs_vs_cats_dataset(crop_size=200):
-   scaled_size = crop_size + 20
+   scaled_size = 256
 
    # Crop the image randomly in a [crop_size, crop_size] size
    rand_crop = RandomCrop(scaled_size=scaled_size, crop_size=crop_size)
@@ -43,8 +43,11 @@ def build_model(train,
                 fully_connected_layers,
                 use_weight_decay,
                 use_drop_out,
+                best_result_file,
                 batch_size=100,
-                max_epochs=1000):
+                max_epochs=1000,
+                monitor_results = True,
+                results_file = 'convnet_results.pkl'):
 
    # TODO: add some parameters validation
 
@@ -58,7 +61,7 @@ def build_model(train,
       layer_name = 'h_c_{}'.format(i+1)
       hidden_conv_layers[i] = ConvRectifiedLinear(layer_name=layer_name,
                                                   output_channels=conv_layers['output_channels'][i],
-                                                  irange=.05,
+                                                  irange=.01,
                                                   kernel_shape=conv_layers['kernel_shape'][i],
                                                   pool_shape=conv_layers['pool_shape'][i],
                                                   pool_stride=conv_layers['pool_stride'][i])
@@ -77,7 +80,7 @@ def build_model(train,
 
       layer_name = 'h_f_{}'.format(i+1)
       hidden_full_layers[i] = RectifiedLinear(layer_name=layer_name,
-                                              irange=.05,
+                                              irange=.01,
                                               dim=fully_connected_layers['dim'][i])
 
       if (use_weight_decay):
@@ -112,42 +115,48 @@ def build_model(train,
    if use_drop_out:
       cost_methods_wanted.extend([Dropout()])
 
-   print cost_methods_wanted
-
    cost_methods = SumOfCosts(costs=cost_methods_wanted)
 
    termination_criteria = And([MonitorBased(channel_name='valid_output_misclass',
-                                            prop_decrease=0.25,
+                                            prop_decrease=0.10,
                                             N=10),             # number of epochs to look back
                                EpochCounter(max_epochs=max_epochs)])
 
    algorithm = SGD(batch_size=batch_size,
-                   train_iteration_mode='batchwise_shuffled_sequential',
+                   train_iteration_mode='even_batchwise_shuffled_sequential',
                    batches_per_iter=10,
                    monitoring_batch_size=batch_size,
-                   monitoring_batches=10,
-                   monitor_iteration_mode='batchwise_shuffled_sequential',
+                   monitoring_batches=100,
+                   monitor_iteration_mode='even_batchwise_shuffled_sequential',
                    learning_rate=1e-3,
-                   learning_rule=Momentum(init_momentum=0.5),
+                   learning_rule=Momentum(init_momentum=0.1),
                    monitoring_dataset={'train':train,
                                        'valid':validation},
                    cost=cost_methods,
                    termination_criterion=termination_criteria)
 
    extensions = [MonitorBasedSaveBest(channel_name='valid_output_misclass',
-                                      save_path="convnetBestResults.pkl"),
+                                      save_path=best_result_file),
                  MomentumAdjustor(start=10,
                                   saturate=100,
                                   final_momentum=.99)]
 
 
    # Run test
-   train = Train(dataset=train,
-                 model=model,
-                 algorithm=algorithm,
-                 save_path='convnetResults.pkl',
-                 save_freq=1,
-                 extensions=extensions)
+
+   if monitor_results:
+      train = Train(dataset=train,
+                    model=model,
+                    algorithm=algorithm,
+                    save_path=results_file,
+                    save_freq=10,
+                    extensions=extensions)
+   else:
+      train = Train(dataset=train,
+                    model=model,
+                    algorithm=algorithm,
+                    save_freq=0,
+                    extensions=extensions)
 
    return train
 
