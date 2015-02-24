@@ -9,15 +9,20 @@ train, valid = CNN.build_dogs_vs_cats_dataset(crop_size)
 # TODO: these tests should be ran automatically
 
 # Build a dictionnary of different tests to run
-kernel_shapes = np.arange(3,9,2)
-output_channels = [16, 32, 60]
+kernel_shapes = np.arange(5,9,2)
+
+output_channels_convnet = [[16, 16, 16], [32, 32, 32]]
+output_channels_fullnet = [[16, 16, 16], [32, 32, 32], [64, 64, 64]]
+pool_shapes = [[2, 2, 2]]
+pool_strides = [[2, 2, 2]]
+
 
 print kernel_shapes
 
 conv_layers_tests = []
 full_layers_tests = []
 conv_test_idx = 0
-max_pooling_shape = 5
+max_pooling_shape = 2
 
 # create conv layers tests
 for i in xrange(len(kernel_shapes)):   # This loops on the dimension of the first layer convnet
@@ -42,49 +47,26 @@ for i in xrange(len(kernel_shapes)):   # This loops on the dimension of the firs
 
          kernel_stride_idx += 1
 
-         for q in range(pool_max_value):
-            pool_shape = [[q+1 ,q+1], [q+1, q+1], [q+1, q+1]]
 
-            pool_stride_idx = 1
-            while pool_stride_idx <= q+1:
+         for out_channels_idx in range(len(output_channels_convnet)):
 
-               pool_stride = [(pool_stride_idx, pool_stride_idx),
-                              (pool_stride_idx, pool_stride_idx),
-                              (pool_stride_idx, pool_stride_idx)]
+            conv_layers_tests.extend([{'nb_layers': 3,
+                                      'output_channels': output_channels_convnet[out_channels_idx],
+                                      'kernel_shape': kernel_shape,
+                                      'kernel_stride': kernel_stride,
+                                      'pool_shape': [[2, 2], [2, 2], [2, 2]],
+                                      'pool_stride': [[2, 2], [2, 2], [2, 2]],
+                                      'weight_decay': [.0001, .0001, .0001]}])
 
-
-               for out_channels_idx in range(len(output_channels)):
-
-                  out_channel = [output_channels[out_channels_idx],
-                                 output_channels[out_channels_idx],
-                                 output_channels[out_channels_idx]]
-
-
-                  conv_layers_tests.extend([{'nb_layers': 3,
-                                            'output_channels': out_channel,
-                                            'kernel_shape': kernel_shape,
-                                            'kernel_stride': kernel_stride,
-                                            'pool_shape': pool_shape,
-                                            'pool_stride': pool_stride,
-                                            'weight_decay': [.0001, .0001, .0001]}])
-
-                  print conv_layers_tests[conv_test_idx]
-
-                  pool_stride_idx += 1
-
-                  conv_test_idx += 1
+            conv_test_idx += 1
 
       j += 1
 
 
 # create fully connected layers tests
-for out_channels_idx in range(len(output_channels)):
-   out_channel = [output_channels[out_channels_idx],
-                  output_channels[out_channels_idx],
-                  output_channels[out_channels_idx]]
-
+for out_channels_idx in range(len(output_channels_fullnet)):
    full_layers_tests.extend([{'nb_layers': 3,
-                              'dim': output_channels,
+                              'dim': output_channels_fullnet[out_channels_idx],
                               'weight_decay': [.0001, .0001, .0001]}])
 
 
@@ -106,7 +88,7 @@ for i in range(len(conv_layers_tests)):
                               conv_layers=conv_layers_tests[i],
                               fully_connected_layers=full_layers_tests[j],
                               use_weight_decay=True,
-                              use_drop_out=True,
+                              use_drop_out=False,
                               batch_size=50,
                               best_result_file=test_name,
                               monitor_results=False)

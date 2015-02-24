@@ -22,7 +22,7 @@ from pylearn2.train_extensions.best_params import MonitorBasedSaveBest
 from ift6266h15.code.pylearn2.datasets.variable_image_dataset import DogsVsCats, RandomCrop
 
 def build_dogs_vs_cats_dataset(crop_size=200):
-   scaled_size = 256
+   scaled_size = crop_size+20
 
    # Crop the image randomly in a [crop_size, crop_size] size
    rand_crop = RandomCrop(scaled_size=scaled_size, crop_size=crop_size)
@@ -126,7 +126,7 @@ def build_model(train,
                    train_iteration_mode='even_batchwise_shuffled_sequential',
                    batches_per_iter=10,
                    monitoring_batch_size=batch_size,
-                   monitoring_batches=100,
+                   monitoring_batches=batch_size,
                    monitor_iteration_mode='even_batchwise_shuffled_sequential',
                    learning_rate=1e-3,
                    learning_rule=Momentum(init_momentum=0.1),
