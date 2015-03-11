@@ -3,9 +3,6 @@
 from pylearn2.models.mlp import MLP
 from pylearn2.models.mlp import Softmax
 from pylearn2.models.mlp import RectifiedLinear
-from pylearn2.training_algorithms.sgd import SGD
-from pylearn2.training_algorithms.learning_rule import Momentum
-from pylearn2.training_algorithms.learning_rule import MomentumAdjustor
 from pylearn2.costs.cost import MethodCost
 from pylearn2.costs.cost import SumOfCosts
 from pylearn2.costs.mlp import WeightDecay
@@ -20,9 +17,11 @@ from pylearn2.train_extensions.best_params import MonitorBasedSaveBest
 
 
 from ift6266h15.code.pylearn2.datasets.variable_image_dataset import DogsVsCats, RandomCrop
+import pylearn2.training_algorithms.learning_rule as learning_rule
+import pylearn2.training_algorithms.sgd as sgd
 
 def build_dogs_vs_cats_dataset(crop_size=200):
-   scaled_size = crop_size+20
+   scaled_size = 256
 
    # Crop the image randomly in a [crop_size, crop_size] size
    rand_crop = RandomCrop(scaled_size=scaled_size, crop_size=crop_size)
@@ -33,21 +32,25 @@ def build_dogs_vs_cats_dataset(crop_size=200):
    # Validation set
    validation = DogsVsCats(transformer=rand_crop, start=20000, stop=22500)
 
-   return [ train, validation]
+   # Test set
+   test = DogsVsCats(transformer=rand_crop, start=22500, stop=25000)
+
+   return train, validation, test
 
 
 def build_model(train,
                 validation,
+                test,
                 crop_size,
                 conv_layers,
                 fully_connected_layers,
                 use_weight_decay,
                 use_drop_out,
-                best_result_file,
                 batch_size=100,
                 max_epochs=1000,
-                monitor_results = True,
-                results_file = 'convnet_results.pkl'):
+                monitor_results=True,
+                results_file='convnet_results.pkl',
+                best_result_file='convnet_best_result.pkl'):
 
    # TODO: add some parameters validation
 
@@ -59,14 +62,20 @@ def build_model(train,
    hidden_conv_layers = [0]*nb_conv_layers
    for i in range(nb_conv_layers):
       layer_name = 'h_c_{}'.format(i+1)
+
+      print conv_layers['kernel_stride'][i]
+
       hidden_conv_layers[i] = ConvRectifiedLinear(layer_name=layer_name,
                                                   output_channels=conv_layers['output_channels'][i],
-                                                  irange=.01,
+                                                  irange=0.1,
                                                   kernel_shape=conv_layers['kernel_shape'][i],
                                                   pool_shape=conv_layers['pool_shape'][i],
-                                                  pool_stride=conv_layers['pool_stride'][i])
-
-      weight_decay_coeffs = {layer_name:conv_layers['weight_decay'][i]}
+                                                  pool_stride=conv_layers['pool_stride'][i],
+                                                  pool_type=conv_layers['pool_type'][i],
+                                                  kernel_stride=conv_layers['kernel_stride'][i])
+      
+      if(use_weight_decay):
+          weight_decay_coeffs[layer_name] = conv_layers['weight_decay'][i]
 
    layers = []
 
@@ -76,32 +85,35 @@ def build_model(train,
    # Fully connected layers
    nb_fully_connected_layers = fully_connected_layers['nb_layers']
    hidden_full_layers = [0] * nb_fully_connected_layers
+   drop_out_probs = {}
+   drop_out_scales = {}
    for i in range(nb_fully_connected_layers):
 
       layer_name = 'h_f_{}'.format(i+1)
       hidden_full_layers[i] = RectifiedLinear(layer_name=layer_name,
-                                              irange=.01,
+                                              irange=0.1,
                                               dim=fully_connected_layers['dim'][i])
 
       if (use_weight_decay):
-         weight_decay_coeffs = {layer_name: fully_connected_layers['weight_decay'][i]}
+         weight_decay_coeffs[layer_name] = fully_connected_layers['weight_decay'][i]
+
+      if(use_drop_out):
+         drop_out_probs[layer_name] = fully_connected_layers['drop_out_probs'][i]
+         drop_out_scales[layer_name] = fully_connected_layers['drop_out_scales'][i]
 
 
    layers.extend(hidden_full_layers)
 
    # Build output layer
-   output_layer = Softmax(max_col_norm=1.9365,
-                          layer_name='output',
+   output_layer = Softmax(layer_name='output',
                           n_classes=2,
-                          istdev=.05)
+                          irange=0.1)
 
    layers.extend([output_layer])
 
 
-   print len(layers)
-
    model = MLP(batch_size=batch_size,
-               input_space=Conv2DSpace(shape=[crop_size,crop_size], num_channels=3),
+               input_space=Conv2DSpace(shape=[crop_size, crop_size], num_channels=3),
                layers=layers)
 
    # Construct training (or optimization?) algorithm object
@@ -113,52 +125,63 @@ def build_model(train,
       cost_methods_wanted.extend([WeightDecay(coeffs=weight_decay_coeffs)])
 
    if use_drop_out:
-      cost_methods_wanted.extend([Dropout()])
+      cost_methods_wanted.extend([Dropout(default_input_include_prob=1.0,
+                                          default_input_scale=1.0,
+                                          input_include_probs=drop_out_probs,
+                                          input_scales=drop_out_scales)])
 
    cost_methods = SumOfCosts(costs=cost_methods_wanted)
 
    termination_criteria = And([MonitorBased(channel_name='valid_output_misclass',
-                                            prop_decrease=0.10,
-                                            N=10),             # number of epochs to look back
+                                            prop_decrease=0.01,
+                                            N=20),             # number of epochs to look back
                                EpochCounter(max_epochs=max_epochs)])
 
-   algorithm = SGD(batch_size=batch_size,
-                   train_iteration_mode='even_batchwise_shuffled_sequential',
-                   batches_per_iter=10,
-                   monitoring_batch_size=batch_size,
-                   monitoring_batches=batch_size,
-                   monitor_iteration_mode='even_batchwise_shuffled_sequential',
-                   learning_rate=1e-3,
-                   learning_rule=Momentum(init_momentum=0.1),
-                   monitoring_dataset={'train':train,
-                                       'valid':validation},
-                   cost=cost_methods,
-                   termination_criterion=termination_criteria)
+
+   print 'batch_size', batch_size
+
+   algorithm = sgd.SGD(batch_size=batch_size,
+                       train_iteration_mode='batchwise_shuffled_sequential',
+                       batches_per_iter=100,
+                       monitoring_batch_size=batch_size,
+                       monitoring_batches=10,
+                       monitor_iteration_mode='batchwise_shuffled_sequential',
+                       learning_rate=1e-3,
+                       learning_rule=learning_rule.Momentum(init_momentum=0.1),
+                       monitoring_dataset={'train': train,
+                                          'valid': validation,
+                                          'test': test},
+                       cost=cost_methods,
+                       termination_criterion=termination_criteria)
 
    extensions = [MonitorBasedSaveBest(channel_name='valid_output_misclass',
                                       save_path=best_result_file),
-                 MomentumAdjustor(start=10,
-                                  saturate=100,
-                                  final_momentum=.99)]
+                 learning_rule.MomentumAdjustor(start=1,
+                                                saturate=20,
+                                                final_momentum=.99),
+                 sgd.LinearDecayOverEpoch(start=1,
+                                          saturate=50,
+                                          decay_factor=0.1)]
+
 
 
    # Run test
 
    if monitor_results:
-      train = Train(dataset=train,
-                    model=model,
-                    algorithm=algorithm,
-                    save_path=results_file,
-                    save_freq=10,
-                    extensions=extensions)
+      cnn = Train(dataset=train,
+                  model=model,
+                  algorithm=algorithm,
+                  save_path=results_file,
+                  save_freq=20,
+                  extensions=extensions)
    else:
-      train = Train(dataset=train,
-                    model=model,
-                    algorithm=algorithm,
-                    save_freq=0,
-                    extensions=extensions)
+      cnn = Train(dataset=train,
+                  model=model,
+                  algorithm=algorithm,
+                  save_freq=0,
+                  extensions=extensions)
 
-   return train
+   return cnn
 
 def run(model):
    model.main_loop()
