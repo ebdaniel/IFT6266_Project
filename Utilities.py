@@ -57,7 +57,7 @@ def find_hyper_parameters():
 
    output_channels_convnet = [[32, 32, 128, 128, 32]]
 
-   output_channels_fullnet = [[64, 64], [128, 128]]
+   output_channels_fullnet = [[128, 128]]
 
    conv_layers_tests = []
    full_layers_tests = []
@@ -90,36 +90,77 @@ def find_hyper_parameters():
 
    # run the tests with different configurations
    # list of good answers
+   # test_idx = 0
+   # for i in range(len(conv_layers_tests)):
+   #    for j in range(len(full_layers_tests)):
+   #       test_idx += 1
+   #       test_best_result = 'test_{}_best_result.pkl'.format(test_idx)
+   #       test_results = 'test_{}_results.pkl'.format(test_idx)
+   #       #
+   #       # print '{}: {}: {}: {}'.format(test_name, conv_layers_tests[i]['output_channels'],
+   #       #                           conv_layers_tests[i]['kernel_shape'],
+   #       #                           full_layers_tests[j]['dim'])
+   #
+   #       # index = (len(full_layers_tests)*i)+(j+1)
+   #       #
+   #       # if test_idx in best_results:
+   #       #    print '{}: {}: {}: {}'.format(test_name, conv_layers_tests[i]['output_channels'], conv_layers_tests[i]['kernel_shape'],
+   #       #                            full_layers_tests[j]['dim'])
+   #
+   #       # Build model
+   #       model = CNN.build_model(train=train,
+   #                               validation=valid,
+   #                               test=test,
+   #                               crop_size=crop_size,
+   #                               conv_layers=conv_layers_tests[i],
+   #                               fully_connected_layers=full_layers_tests[j],
+   #                               use_weight_decay=True,
+   #                               use_drop_out=False,
+   #                               batch_size=50,
+   #                               best_result_file=test_best_result,
+   #                               results_file=test_results,
+   #                               monitor_results=True)
+   #
+   #       try:
+   #          # Run model
+   #          CNN.run(model)
+   #       except (KeyboardInterrupt, SystemExit):
+   #          raise
+   #       except:
+   #          print "Smells fishy! But continue anyways"
+
+
+   momentum = [{'initial_value': 0.5, 'start': 1, 'saturate': 20, 'final_value': 0.99},
+               {'initial_value': 0.5, 'start': 10, 'saturate': 20, 'final_value': 0.99},
+               {'initial_value': 0.8, 'start': 1, 'saturate': 10, 'final_value': 0.99}]
+
+   learning_rate = [{'initial_value': 0.01, 'start': 30, 'saturate': 50, 'decay_factor': 0.01},
+                    {'initial_value': 0.01, 'start': 20, 'saturate': 50, 'decay_factor': 0.01},
+                    {'initial_value': 0.01, 'start': 50, 'saturate': 100, 'decay_factor': 0.01}]
+
    test_idx = 0
-   for i in range(len(conv_layers_tests)):
-      for j in range(len(full_layers_tests)):
+   for i in range(len(momentum)):
+      for j in range(len(learning_rate)):
+
          test_idx += 1
          test_best_result = 'test_{}_best_result.pkl'.format(test_idx)
          test_results = 'test_{}_results.pkl'.format(test_idx)
-         #
-         # print '{}: {}: {}: {}'.format(test_name, conv_layers_tests[i]['output_channels'],
-         #                           conv_layers_tests[i]['kernel_shape'],
-         #                           full_layers_tests[j]['dim'])
-
-         # index = (len(full_layers_tests)*i)+(j+1)
-         #
-         # if test_idx in best_results:
-         #    print '{}: {}: {}: {}'.format(test_name, conv_layers_tests[i]['output_channels'], conv_layers_tests[i]['kernel_shape'],
-         #                            full_layers_tests[j]['dim'])
 
          # Build model
          model = CNN.build_model(train=train,
                                  validation=valid,
                                  test=test,
                                  crop_size=crop_size,
-                                 conv_layers=conv_layers_tests[i],
-                                 fully_connected_layers=full_layers_tests[j],
+                                 conv_layers=conv_layers_tests[0],
+                                 fully_connected_layers=full_layers_tests[0],
                                  use_weight_decay=True,
                                  use_drop_out=False,
                                  batch_size=50,
                                  best_result_file=test_best_result,
                                  results_file=test_results,
-                                 monitor_results=True)
+                                 monitor_results=True,
+                                 momentum=momentum[i],
+                                 learning_rate=learning_rate[j])
 
          try:
             # Run model
@@ -128,6 +169,7 @@ def find_hyper_parameters():
             raise
          except:
             print "Smells fishy! But continue anyways"
+
 
 
 def plot_results(file_path):

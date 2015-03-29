@@ -1,7 +1,7 @@
 import ConvNet as CNN
 
 # Create dataset
-crop_size = 224
+crop_size = 200
 train, valid, test = CNN.build_dogs_vs_cats_dataset(crop_size=crop_size)
 
 # Create model
@@ -22,10 +22,12 @@ full_layers = {'nb_layers': 2,
 
 model = CNN.build_model(train=train,
                         validation=valid,
-			               test=test,
+                        test=test,
                         crop_size=crop_size,
                         conv_layers=convlayers,
                         fully_connected_layers=full_layers,
+                        momentum={'initial_value': 0.5, 'start': 1, 'saturate': 20, 'final_value': 0.99},
+                        learning_rate={'initial_value': 0.01, 'start': 20, 'saturate': 80, 'decay_factor': 0.01},
                         batch_size=50,
                         use_weight_decay=True,
                         use_drop_out=False)
