@@ -16,16 +16,16 @@ from pylearn2.models.mlp import ConvRectifiedLinear
 from pylearn2.train_extensions.best_params import MonitorBasedSaveBest
 
 
-from ift6266h15.code.pylearn2.datasets.variable_image_dataset import DogsVsCats
+from ift6266h15.code.pylearn2.datasets.variable_image_dataset import DogsVsCats, RandomCrop
 import pylearn2.training_algorithms.learning_rule as learning_rule
 import pylearn2.training_algorithms.sgd as sgd
-from Preprocessing import Preprocess
+# from Preprocessing import Preprocess
 
 def build_dogs_vs_cats_dataset(crop_size=200):
-   scaled_size = 202
+   scaled_size = crop_size + 25
 
    # Crop the image randomly in a [crop_size, crop_size] size
-   rand_crop = Preprocess(scaled_size=scaled_size, crop_size=crop_size)
+   rand_crop = RandomCrop(scaled_size=scaled_size, crop_size=crop_size)
 
    # Train set
    train = DogsVsCats(transformer=rand_crop, start=0, stop=20000)
@@ -52,6 +52,7 @@ def build_model(train,
                 batch_size=100,
                 max_epochs=1000,
                 monitor_results=True,
+                optimization='momentum',
                 results_file='convnet_results.pkl',
                 best_result_file='convnet_best_result.pkl'):
 
@@ -124,7 +125,7 @@ def build_model(train,
 
    if use_weight_decay:
       # add weight decay for output layer
-      weight_decay_coeffs['output']=.00005 # TODO: this should also be a paramter
+      weight_decay_coeffs['output']=.00001 # TODO: this should also be a paramter
       cost_methods_wanted.extend([WeightDecay(coeffs=weight_decay_coeffs)])
 
    if use_drop_out:
@@ -140,8 +141,32 @@ def build_model(train,
                                             N=20),             # number of epochs to look back
                                EpochCounter(max_epochs=max_epochs)])
 
+   # optimization
+   extensions = [MonitorBasedSaveBest(channel_name='valid_output_misclass',
+                                      save_path=best_result_file),
+                 sgd.LinearDecayOverEpoch(start=learning_rate['start'],
+                                          saturate=learning_rate['saturate'],
+                                          decay_factor=learning_rate['decay_factor'])]
 
-   print 'batch_size', batch_size
+   optimization_rule = []
+
+   if optimization == 'nesterov':
+      optimization_rule = learning_rule.Momentum(init_momentum=momentum['initial_value'],
+                                                 nesterov_momentum=True)
+      extensions.extend([learning_rule.MomentumAdjustor(start=momentum['start'],
+                                                        saturate=momentum['saturate'],
+                                                        final_momentum=momentum['final_value'])])
+   elif optimization == 'momentum':
+      optimization_rule = learning_rule.Momentum(init_momentum=momentum['initial_value'])
+      extensions.extend([learning_rule.MomentumAdjustor(start=momentum['start'],
+                                                        saturate=momentum['saturate'],
+                                                        final_momentum=momentum['final_value'])])
+   elif optimization == 'rmsprop':
+      optimization_rule = learning_rule.RMSProp()
+
+   elif optimization == 'adagrad':
+      optimization_rule = learning_rule.AdaGrad()
+
 
    algorithm = sgd.SGD(batch_size=batch_size,
                        train_iteration_mode='batchwise_shuffled_sequential',
@@ -150,26 +175,14 @@ def build_model(train,
                        monitoring_batches=10,
                        monitor_iteration_mode='batchwise_shuffled_sequential',
                        learning_rate=learning_rate['initial_value'],
-                       learning_rule=learning_rule.Momentum(init_momentum=momentum['initial_value']),
+                       learning_rule=optimization_rule,
                        monitoring_dataset={'train': train,
-                                          'valid': validation,
-                                          'test': test},
+                                           'valid': validation,
+                                           'test': test},
                        cost=cost_methods,
                        termination_criterion=termination_criteria)
 
-   extensions = [MonitorBasedSaveBest(channel_name='valid_output_misclass',
-                                      save_path=best_result_file),
-                 learning_rule.MomentumAdjustor(start=momentum['start'],
-                                                saturate=momentum['saturate'],
-                                                final_momentum=momentum['final_value']),
-                 sgd.LinearDecayOverEpoch(start=learning_rate['start'],
-                                          saturate=learning_rate['saturate'],
-                                          decay_factor=learning_rate['decay_factor'])]
-
-
-
    # Run test
-
    if monitor_results:
       cnn = Train(dataset=train,
                   model=model,

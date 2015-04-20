@@ -40,33 +40,37 @@ class Preprocess(BaseImageTransformer):
    def preprocess(self, image):
       small_axis = numpy.argmin(image.shape[:-1])
       ratio = (1.0 * self.scaled_size) / image.shape[small_axis]
-      resized_image = misc.imresize(image, ratio)
+      resized_image = misc.imresize(image[:, :, 0], ratio)
 
       max_i = resized_image.shape[0] - self.crop_size
       max_j = resized_image.shape[1] - self.crop_size
       i = self.rng.randint(low=0, high=max_i)
       j = self.rng.randint(low=0, high=max_j)
 
-      cropped_image = resized_image[i: i + self.crop_size,
-                      j: j + self.crop_size, :]
+      cropped_image_temp = resized_image[i: i + self.crop_size,
+                      j: j + self.crop_size]
+
+      cropped_image = cropped_image_temp[:, :, numpy.newaxis]
+      # numpy.empty((cropped_image_temp.shape[0], cropped_image_temp.shape[1], 1))*0
+      # cropped_image[:, :, 0] = cropped_image_temp
 
 
 
-      self.imageMeanSize = (1.0*self.imageCounter*self.imageMeanSize + image.shape[small_axis])/(self.imageCounter+1.0)
-      self.imageCounter += 1
-
-      if self.imageCounter % 500 == 0:
-         print "the mean size is: ", self.imageMeanSize
-
-      if self.saveImgCount < 50:
-
-         if self.scaled_size < image.shape[small_axis]:
-            misc.imsave("Test_Images/image_bigger_image_{}.jpg".format(self.saveImgCount), cropped_image)
-
-         if self.scaled_size > image.shape[small_axis]:
-            misc.imsave("Test_Images/image_smaller_image_{}.jpg".format(self.saveImgCount), cropped_image)
-
-         self.saveImgCount += 1
+      # self.imageMeanSize = (1.0*self.imageCounter*self.imageMeanSize + image.shape[small_axis])/(self.imageCounter+1.0)
+      # self.imageCounter += 1
+      #
+      # if self.imageCounter % 500 == 0:
+      #    print "the mean size is: ", self.imageMeanSize
+      #
+      # if self.saveImgCount < 50:
+      #
+      #    if self.scaled_size < image.shape[small_axis]:
+      #       misc.imsave("Test_Images/image_bigger_image_{}.jpg".format(self.saveImgCount), cropped_image)
+      #
+      #    if self.scaled_size > image.shape[small_axis]:
+      #       misc.imsave("Test_Images/image_smaller_image_{}.jpg".format(self.saveImgCount), cropped_image)
+      #
+      #    self.saveImgCount += 1
 
 
 
